@@ -53,7 +53,7 @@ Edit the OpenVPN configuration file at `client.ovpn`, replace the ip at line 6 w
 To be extra sure to prevent DNS leaks, you can also disable ipv6 on your machine, macOS:
 `networksetup -setv6off Wi-Fi`, to enable again `networksetup -setv6automatic Wi-Fi`
 
-## 5. Connect to the VPN Server
+## 4. Connect to the VPN Server
 
 ```bash
 sudo openvpn --config client.ovpn
