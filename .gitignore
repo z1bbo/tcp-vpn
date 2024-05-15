@@ -1,0 +1,9 @@
+# certificates, keys
+*.crt
+*.key
+
+# terraform
+.terraform*
+
+# swp files
+*.swp
