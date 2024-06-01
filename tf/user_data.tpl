@@ -92,6 +92,7 @@ ip6tables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
 # setup dnsmasq to serve DNS queries
 echo "listen-address=10.8.0.1" >> /etc/dnsmasq.conf
 echo "port=5353" >> /etc/dnsmasq.conf
+echo "dns-forward-max=150" >> /etc/dnsmasq.conf
 DEBIAN_FRONTEND=noninteractive apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" dnsmasq
 
 # route DNS traffic to port 5353 where dnsmasq runs
@@ -108,12 +109,31 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y iptables-persistent netfilter-
 netfilter-persistent save
 ip6tables-save > /etc/iptables/rules.v6
 
-# old way:
-# mkdir -p /etc/iptables && iptables-save > /etc/iptables/rules.v4
-# echo "iptables-restore < /etc/iptables/rules.v4" >> /etc/rc.local
+cat <<EOF > /etc/openvpn/server.conf
+port 1194
+proto udp
+server 10.8.0.0 255.255.255.0
+dev tun
+ca /etc/openvpn/ca.crt
+cert /etc/openvpn/server.crt
+key /etc/openvpn/server.key
+dh none
+tls-crypt /etc/openvpn/tls-crypt.key
+cipher AES-256-CBC
+data-ciphers AES-256-GCM:AES-128-GCM:AES-256-CBC
+keepalive 15 120
+ping-timer-rem
+persist-tun
+persist-key
+user ubuntu
+group ubuntu
+push "dhcp-option DNS 10.8.0.1"
+push "redirect-gateway def1"
+keepalive 10 120
+daemon
+EOF
 
-echo "Creating server configuration file..."
-echo "
+cat <<EOF > /etc/openvpn/server-tcp.conf
 port 443
 proto tcp-server
 server 10.8.0.0 255.255.255.0
@@ -131,14 +151,17 @@ persist-tun
 persist-key
 user ubuntu
 group ubuntu
-push \"dhcp-option DNS 10.8.0.1\"
-push \"redirect-gateway def1\"
+push "dhcp-option DNS 10.8.0.1"
+push "redirect-gateway def1"
 keepalive 10 120
-daemon" > /etc/openvpn/server.conf
+daemon
+EOF
 
-echo "Enabling and starting OpenVPN service..."
+echo "Enabling and starting OpenVPN service"
 systemctl enable openvpn@server
 systemctl start openvpn@server
+systemctl enable openvpn@server-tcp
+systemctl start openvpn@server-tcp
 
 if [ $? -ne 0 ]; then
   echo "Failed to start OpenVPN service."
@@ -150,10 +173,15 @@ sysctl -p
 
 # Let's run a script every minute to make sure the service is up
 echo '#!/bin/bash
-service_status=$(systemctl is-active openvpn@server)
-port_status=$(ss -tuln | grep ^tcp.*:443)
-if [[ "$service_status" != "active" ]] || [[ -z "$port_status" ]]; then
+udp_service_status=$(systemctl is-active openvpn@server)
+tcp_service_status=$(systemctl is-active openvpn@server-tcp)
+udp_port_status=$(ss -tuln | grep ^udp.*:1194)
+tcp_port_status=$(ss -tuln | grep ^tcp.*:443)
+if [[ "$udp_service_status" != "active" ]] || [[ -z "$udp_port_status" ]]; then
   systemctl start openvpn@server
+fi
+if [[ "$tcp_service_status" != "active" ]] || [[ -z "$tcp_port_status" ]]; then
+  systemctl start openvpn@server-tcp
 fi' > /usr/local/bin/check_openvpn.sh
 
 chmod +x /usr/local/bin/check_openvpn.sh
