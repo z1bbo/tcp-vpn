@@ -1,4 +1,7 @@
 #!/bin/bash
+echo "using archive.ubuntu.com instead of ap-southeast one, which is unreliable"
+sed -i 's/ap-southeast-1.ec2.archive.ubuntu.com/archive.ubuntu.com/g' /etc/apt/sources.list
+
 echo "Installing OpenVPN, AWS CLI, and Easy-RSA..."
 apt-get update
 apt-get install -y openvpn awscli easy-rsa
